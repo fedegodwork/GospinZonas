@@ -150,17 +150,18 @@
     <div id="resultado" class="resultado"></div>
     <div class="hint">
       En modo localidad no hace falta escribir acentos. También funciona si escribís
-      <strong>CABA</strong>, <strong>Capital</strong> o <strong>Capital Federal</strong>.
+      <strong>CABA</strong>, <strong>Capital</strong> o <strong>Capital Federal</strong>.<br/>
+      En modo código postal podés escribir solo los números (ej: 1704).
     </div>
 
-    <div class="footer">Versión 1.4 · Soporte visual para búsqueda por localidad o código postal</div>
+    <div class="footer">Versión 2.0 · Localidades desde zonas.dat y Códigos Postales desde cp.dat</div>
   </div>
 
   <script>
     let LOCALIDADES = [];
     let datosCargados = false;
 
-    let CPS = [];
+    let CP_MAP = {};
     let cpsCargados = false;
 
     let modoBusqueda = "localidad";
@@ -174,33 +175,43 @@
         .trim();
     }
 
-    function inicializarDatos() {
+    function inicializarLocalidades() {
       return fetch("zonas.dat")
         .then(function(r) { return r.text(); })
         .then(function(b64) {
           const limpio = b64.trim();
-          try {
-            const jsonStr = atob(limpio);
-            const arr = JSON.parse(jsonStr);
-            LOCALIDADES = arr.map(function(item) {
-              return { key: item[0], nombre: item[1], zona: item[2] };
-            });
-            datosCargados = true;
-          } catch (e) {
-            console.error("Error decodificando zonas.dat:", e);
-            datosCargados = false;
-          }
+          const jsonStr = atob(limpio);
+          const arr = JSON.parse(jsonStr);
+          LOCALIDADES = arr.map(function(item) {
+            return { key: item[0], nombre: item[1], zona: item[2] };
+          });
+          datosCargados = true;
         })
         .catch(function(err) {
-          console.error("Error cargando datos de zonas:", err);
+          console.error("Error cargando zonas.dat:", err);
           datosCargados = false;
         });
     }
 
     function inicializarCPs() {
-      return Promise.resolve().then(function() {
-        cpsCargados = false;
-      });
+      return fetch("cp.dat")
+        .then(function(r) { return r.text(); })
+        .then(function(b64) {
+          const limpio = b64.trim();
+          const jsonStr = atob(limpio);
+          const arr = JSON.parse(jsonStr);
+          CP_MAP = {};
+          arr.forEach(function(item) {
+            const cp = String(item[0]);
+            const zona = item[1];
+            CP_MAP[cp] = zona;
+          });
+          cpsCargados = true;
+        })
+        .catch(function(err) {
+          console.error("Error cargando cp.dat:", err);
+          cpsCargados = false;
+        });
     }
 
     function buscarZonaLocalidad(valor, resultadoEl) {
@@ -231,22 +242,42 @@
     }
 
     function buscarZonaCP(valor, resultadoEl) {
-      const cp = valor.trim();
-
-      if (!cp) {
+      const soloDigitos = valor.replace(/[^0-9]/g, "");
+      if (!soloDigitos) {
         resultadoEl.className = "resultado error";
-        resultadoEl.textContent = "Escribí un código postal para buscar.";
+        resultadoEl.textContent = "Escribí un código postal (solo números) para buscar.";
         return;
       }
 
-      if (!cpsCargados || !CPS.length) {
+      const cpNum = parseInt(soloDigitos, 10);
+      if (isNaN(cpNum)) {
         resultadoEl.className = "resultado error";
-        resultadoEl.textContent = "La búsqueda por código postal va a estar disponible cuando carguemos la tabla de CPs. Por ahora, usá la búsqueda por localidad/barrio.";
+        resultadoEl.textContent = "El código postal debe ser numérico.";
         return;
       }
 
-      resultadoEl.className = "resultado error";
-      resultadoEl.textContent = "Función de búsqueda por código postal lista a nivel de código, falta cargar los datos reales de CPs.";
+      // Zona 1: rango 1000–1599
+      if (cpNum >= 1000 && cpNum <= 1599) {
+        resultadoEl.className = "resultado ok";
+        resultadoEl.innerHTML = "Para el código postal <strong>" + soloDigitos + "</strong> corresponde la <strong>Zona 1</strong>.";
+        return;
+      }
+
+      if (!cpsCargados) {
+        resultadoEl.className = "resultado error";
+        resultadoEl.textContent = "Todavía se están cargando los datos de códigos postales. Esperá un segundo y probá de nuevo.";
+        return;
+      }
+
+      const zona = CP_MAP[soloDigitos];
+      if (!zona) {
+        resultadoEl.className = "resultado error";
+        resultadoEl.textContent = "Ese código postal no está configurado en la tabla de GoSpin. Verificá que sea correcto.";
+        return;
+      }
+
+      resultadoEl.className = "resultado ok";
+      resultadoEl.innerHTML = "Para el código postal <strong>" + soloDigitos + "</strong> corresponde la <strong>" + zona + "</strong>.";
     }
 
     function buscarZona() {
@@ -257,7 +288,7 @@
       if (modoBusqueda === "localidad") {
         if (!datosCargados) {
           resultadoEl.className = "resultado error";
-          resultadoEl.textContent = "Todavía se están cargando los datos de localidades. Esperá un segundo y probá de nuevo. Si el problema persiste, verificá que el archivo zonas.dat esté en la misma carpeta que index.html.";
+          resultadoEl.textContent = "Todavía se están cargando los datos de localidades. Esperá un segundo y probá de nuevo.";
           return;
         }
         buscarZonaLocalidad(valor, resultadoEl);
@@ -285,7 +316,8 @@
       }
     });
 
-    inicializarDatos();
+    // Inicializar datos al abrir
+    inicializarLocalidades();
     inicializarCPs();
   </script>
 </body>
