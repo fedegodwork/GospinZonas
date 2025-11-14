@@ -9,17 +9,17 @@
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: #f5f5f5;
       margin: 0;
-      padding: 0;
+      padding: 24px 0;
       display: flex;
       min-height: 100vh;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
     }
     .app {
       background: #ffffff;
-      padding: 24px 28px;
-      border-radius: 16px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      padding: 18px 22px;
+      border-radius: 14px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.06);
       max-width: 520px;
       width: 100%;
     }
@@ -38,12 +38,12 @@
     .subtitle {
       font-size: 13px;
       color: #666;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
     }
     .mode-row {
       display: flex;
       gap: 16px;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       align-items: center;
       flex-wrap: wrap;
     }
@@ -65,7 +65,7 @@
     }
     input[type="text"] {
       width: 100%;
-      padding: 10px 12px;
+      padding: 9px 11px;
       border-radius: 10px;
       border: 1px solid #ccc;
       font-size: 14px;
@@ -78,9 +78,9 @@
       box-shadow: 0 0 0 2px rgba(255,152,0,0.2);
     }
     button {
-      margin-top: 12px;
+      margin-top: 10px;
       width: 100%;
-      padding: 10px 14px;
+      padding: 9px 14px;
       border-radius: 999px;
       border: none;
       background: #ff9800;
@@ -97,13 +97,13 @@
       transform: scale(0.98);
     }
     .resultado {
-      margin-top: 18px;
-      padding: 12px 14px;
+      margin-top: 14px;
+      padding: 11px 13px;
       border-radius: 12px;
       background: #fafafa;
       border: 1px solid #eee;
       font-size: 14px;
-      min-height: 40px;
+      min-height: 32px;
     }
     .resultado.ok strong {
       color: #2e7d32;
@@ -114,12 +114,12 @@
       color: #c62828;
     }
     .hint {
-      margin-top: 8px;
+      margin-top: 6px;
       font-size: 12px;
       color: #888;
     }
     .footer {
-      margin-top: 16px;
+      margin-top: 12px;
       font-size: 11px;
       color: #aaa;
       text-align: right;
@@ -144,16 +144,16 @@
     </div>
 
     <label for="busqueda" class="main-label">Texto a buscar</label>
-    <input id="busqueda" type="text" placeholder="Ej: Caballito, Laferrere, La Plata, 1704..." />
+    <input id="busqueda" type="text" />
     <button id="btnBuscar">Ver zona</button>
 
     <div id="resultado" class="resultado"></div>
-    <div class="hint">
-      En modo localidad no hace falta escribir acentos. Ahora también podés escribir una parte del nombre
+    <div class="hint" id="hintText">
+      En modo localidad no hace falta escribir acentos. También podés escribir una parte del nombre
       (por ejemplo "laferrere" o "plata") siempre que coincida con una sola localidad.
     </div>
 
-    <div class="footer">Versión 2.1 · Localidad con coincidencia parcial + búsqueda por código postal</div>
+    <div class="footer">Versión 2.2 · Placeholder dinámico, números en nombres y layout más compacto</div>
   </div>
 
   <script>
@@ -166,12 +166,48 @@
     let modoBusqueda = "localidad";
 
     function normalizar(texto) {
-      return texto
+      let t = texto
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, " ")
         .trim();
+
+      // Convertir números sueltos (1,2,3,...) a palabras para casos tipo "3 de febrero"
+      const numMap = {
+        "1": "uno",
+        "2": "dos",
+        "3": "tres",
+        "4": "cuatro",
+        "5": "cinco",
+        "6": "seis",
+        "7": "siete",
+        "8": "ocho",
+        "9": "nueve",
+        "10": "diez",
+        "11": "once",
+        "12": "doce"
+      };
+
+      if (!t) return "";
+
+      const partes = t.split(/\s+/).map(function(p) {
+        return numMap[p] || p;
+      });
+
+      return partes.join(" ").trim();
+    }
+
+    function actualizarPlaceholder() {
+      const input = document.getElementById("busqueda");
+      const hint = document.getElementById("hintText");
+      if (modoBusqueda === "localidad") {
+        input.placeholder = "Ej: Caballito, Laferrere, La Plata...";
+        hint.innerHTML = 'En modo localidad no hace falta escribir acentos. También podés escribir una parte del nombre (por ejemplo "laferrere" o "plata") siempre que coincida con una sola localidad.';
+      } else {
+        input.placeholder = "Ej: 1405, 1704, 1754, 7600...";
+        hint.textContent = "En modo código postal escribí solo números (sin guiones ni letras).";
+      }
     }
 
     function inicializarDatos() {
@@ -225,12 +261,11 @@
         return;
       }
 
-      // 1) Intentar coincidencia exacta
+      // 1) Exacto
       let match = LOCALIDADES.find(function(item) { return item.key === norm; });
 
-      // 2) Si no hay exacta, intentamos coincidencia parcial única
+      // 2) Parcial única
       if (!match) {
-        // Evitar términos demasiado cortos que matchean todo ("la", "san", etc.)
         if (norm.length < 3) {
           resultadoEl.className = "resultado error";
           resultadoEl.textContent = "El texto es muy corto. Escribí al menos 3 letras de la localidad.";
@@ -320,15 +355,19 @@
     document.getElementById("modoLocalidad").addEventListener("change", function() {
       if (this.checked) {
         modoBusqueda = "localidad";
+        actualizarPlaceholder();
       }
     });
 
     document.getElementById("modoCP").addEventListener("change", function() {
       if (this.checked) {
         modoBusqueda = "cp";
+        actualizarPlaceholder();
       }
     });
 
+    // Inicializar
+    actualizarPlaceholder();
     inicializarDatos();
     inicializarCPs();
   </script>
