@@ -1,1 +1,375 @@
-<html><body>ERROR preparing full content</body></html>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Calculadora de Zonas - GoSpin Logística</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 24px 0;
+      display: flex;
+      min-height: 100vh;
+      align-items: flex-start;
+      justify-content: center;
+    }
+    .app {
+      background: #ffffff;
+      padding: 18px 22px;
+      border-radius: 14px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+      max-width: 520px;
+      width: 100%;
+    }
+    .logo {
+      font-weight: 800;
+      font-size: 24px;
+      margin-bottom: 4px;
+      color: #ff9800;
+    }
+    .logo span {
+      color: #333;
+      font-weight: 600;
+      font-size: 18px;
+      margin-left: 4px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+    .mode-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .mode-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .mode-option input {
+      cursor: pointer;
+    }
+    label.main-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input[type="text"]:focus {
+      border-color: #ff9800;
+      box-shadow: 0 0 0 2px rgba(255,152,0,0.2);
+    }
+    button {
+      margin-top: 10px;
+      width: 100%;
+      padding: 9px 14px;
+      border-radius: 999px;
+      border: none;
+      background: #ff9800;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.05s;
+    }
+    button:hover {
+      background: #fb8c00;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    .resultado {
+      margin-top: 14px;
+      padding: 11px 13px;
+      border-radius: 12px;
+      background: #fafafa;
+      border: 1px solid #eee;
+      font-size: 14px;
+      min-height: 32px;
+    }
+    .resultado.ok strong {
+      color: #2e7d32;
+    }
+    .resultado.error {
+      border-color: #ffcdd2;
+      background: #ffebee;
+      color: #c62828;
+    }
+    .hint {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #888;
+    }
+    .footer {
+      margin-top: 12px;
+      font-size: 11px;
+      color: #aaa;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="logo">GoSpin<span>Logística</span></div>
+    <div class="subtitle">Calculadora rápida de zona por localidad/barrio o por código postal.</div>
+
+    <div class="mode-row">
+      <span style="font-size:12px; color:#555;">Modo de búsqueda:</span>
+      <label class="mode-option">
+        <input type="radio" name="modo" value="localidad" id="modoLocalidad" checked />
+        <span>Por localidad / barrio</span>
+      </label>
+      <label class="mode-option">
+        <input type="radio" name="modo" value="cp" id="modoCP" />
+        <span>Por código postal</span>
+      </label>
+    </div>
+
+    <label for="busqueda" class="main-label">Texto a buscar</label>
+    <input id="busqueda" type="text" />
+    <button id="btnBuscar">Ver zona</button>
+
+    <div id="resultado" class="resultado"></div>
+    <div class="hint" id="hintText">
+      En modo localidad no hace falta escribir acentos. También podés escribir una parte del nombre
+      (por ejemplo "laferrere" o "plata") siempre que coincida con una sola localidad.
+    </div>
+
+    <div class="footer">Versión 2.2 · Placeholder dinámico, números en nombres y layout más compacto</div>
+  </div>
+
+  <script>
+    let LOCALIDADES = [];
+    let datosCargados = false;
+
+    let CPS = [];
+    let cpsCargados = false;
+
+    let modoBusqueda = "localidad";
+
+    function normalizar(texto) {
+      let t = texto
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+
+      // Convertir números sueltos (1,2,3,...) a palabras para casos tipo "3 de febrero"
+      const numMap = {
+        "1": "uno",
+        "2": "dos",
+        "3": "tres",
+        "4": "cuatro",
+        "5": "cinco",
+        "6": "seis",
+        "7": "siete",
+        "8": "ocho",
+        "9": "nueve",
+        "10": "diez",
+        "11": "once",
+        "12": "doce"
+      };
+
+      if (!t) return "";
+
+      const partes = t.split(/\s+/).map(function(p) {
+        return numMap[p] || p;
+      });
+
+      return partes.join(" ").trim();
+    }
+
+    function actualizarPlaceholder() {
+      const input = document.getElementById("busqueda");
+      const hint = document.getElementById("hintText");
+      if (modoBusqueda === "localidad") {
+        input.placeholder = "Ej: Caballito, Laferrere, La Plata...";
+        hint.innerHTML = 'En modo localidad no hace falta escribir acentos. También podés escribir una parte del nombre (por ejemplo "laferrere" o "plata") siempre que coincida con una sola localidad.';
+      } else {
+        input.placeholder = "Ej: 1405, 1704, 1754, 7600...";
+        hint.textContent = "En modo código postal escribí solo números (sin guiones ni letras).";
+      }
+    }
+
+    function inicializarDatos() {
+      return fetch("zonas.dat")
+        .then(function(r) { return r.text(); })
+        .then(function(b64) {
+          const limpio = b64.trim();
+          const jsonStr = atob(limpio);
+          const arr = JSON.parse(jsonStr);
+          LOCALIDADES = arr.map(function(item) {
+            return { key: item[0], nombre: item[1], zona: item[2] };
+          });
+          datosCargados = true;
+        })
+        .catch(function(err) {
+          console.error("Error cargando datos de zonas:", err);
+          datosCargados = false;
+        });
+    }
+
+    function inicializarCPs() {
+      return fetch("cp.dat")
+        .then(function(r) { return r.text(); })
+        .then(function(b64) {
+          const limpio = b64.trim();
+          const jsonStr = atob(limpio);
+          const arr = JSON.parse(jsonStr);
+          CPS = arr.map(function(item) {
+            return { cp: String(item[0]), zona: item[1] };
+          });
+          cpsCargados = true;
+        })
+        .catch(function(err) {
+          console.error("Error cargando datos de CP:", err);
+          cpsCargados = false;
+        });
+    }
+
+    function buscarZonaLocalidad(valor, resultadoEl) {
+      const norm = normalizar(valor);
+
+      if (!norm) {
+        resultadoEl.className = "resultado error";
+        resultadoEl.textContent = "Escribí una localidad o barrio para buscar.";
+        return;
+      }
+
+      if (norm === "la matanza") {
+        resultadoEl.className = "resultado error";
+        resultadoEl.textContent = "El Partido de La Matanza tiene dos zonas tarifarias. Por favor ingresá el nombre de la localidad o buscá por código postal.";
+        return;
+      }
+
+      // 1) Exacto
+      let match = LOCALIDADES.find(function(item) { return item.key === norm; });
+
+      // 2) Parcial única
+      if (!match) {
+        if (norm.length < 3) {
+          resultadoEl.className = "resultado error";
+          resultadoEl.textContent = "El texto es muy corto. Escribí al menos 3 letras de la localidad.";
+          return;
+        }
+
+        const parciales = LOCALIDADES.filter(function(item) {
+          return item.key.indexOf(norm) !== -1;
+        });
+
+        if (parciales.length === 1) {
+          match = parciales[0];
+        } else if (parciales.length > 1) {
+          const nombres = parciales.slice(0,5).map(function(it) { return it.nombre; }).join(", ");
+          resultadoEl.className = "resultado error";
+          resultadoEl.textContent = "Hay más de una localidad que contiene ese texto. Por favor escribí el nombre más completo. Ejemplos: " + nombres + "...";
+          return;
+        }
+      }
+
+      if (!match) {
+        resultadoEl.className = "resultado error";
+        resultadoEl.textContent = "No encontré esa localidad/barrio en la tabla de GoSpin. Probá escribir solo el nombre (sin provincia ni país).";
+        return;
+      }
+
+      resultadoEl.className = "resultado ok";
+      resultadoEl.innerHTML = "Para <strong>" + match.nombre + "</strong> corresponde la <strong>" + match.zona + "</strong>.";
+    }
+
+    function buscarZonaCP(valor, resultadoEl) {
+      const cp = (valor || "").trim();
+
+      if (!cp) {
+        resultadoEl.className = "resultado error";
+        resultadoEl.textContent = "Escribí un código postal para buscar.";
+        return;
+      }
+
+      if (!cpsCargados) {
+        resultadoEl.className = "resultado error";
+        resultadoEl.textContent = "Todavía se están cargando los datos de códigos postales. Esperá un segundo y probá de nuevo.";
+        return;
+      }
+
+      const match = CPS.find(function(item) { return item.cp === cp; });
+
+      if (!match) {
+        resultadoEl.className = "resultado error";
+        resultadoEl.textContent = "Ese código postal no está configurado en la tabla de GoSpin.";
+        return;
+      }
+
+      resultadoEl.className = "resultado ok";
+      resultadoEl.innerHTML = "Para el código postal <strong>" + cp + "</strong> corresponde la <strong>" + match.zona + "</strong>.";
+    }
+
+    function buscarZona() {
+      const input = document.getElementById("busqueda");
+      const resultadoEl = document.getElementById("resultado");
+      const valor = input.value || "";
+
+      if (modoBusqueda === "localidad") {
+        if (!datosCargados) {
+          resultadoEl.className = "resultado error";
+          resultadoEl.textContent = "Todavía se están cargando los datos de localidades. Esperá un segundo y probá de nuevo.";
+          return;
+        }
+        buscarZonaLocalidad(valor, resultadoEl);
+      } else {
+        if (!cpsCargados) {
+          resultadoEl.className = "resultado error";
+          resultadoEl.textContent = "Todavía se están cargando los datos de códigos postales. Esperá un segundo y probá de nuevo.";
+          return;
+        }
+        buscarZonaCP(valor, resultadoEl);
+      }
+    }
+
+    document.getElementById("btnBuscar").addEventListener("click", buscarZona);
+    document.getElementById("busqueda").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") {
+        buscarZona();
+      }
+    });
+
+    document.getElementById("modoLocalidad").addEventListener("change", function() {
+      if (this.checked) {
+        modoBusqueda = "localidad";
+        actualizarPlaceholder();
+      }
+    });
+
+    document.getElementById("modoCP").addEventListener("change", function() {
+      if (this.checked) {
+        modoBusqueda = "cp";
+        actualizarPlaceholder();
+      }
+    });
+
+    // Inicializar
+    actualizarPlaceholder();
+    inicializarDatos();
+    inicializarCPs();
+  </script>
+</body>
+</html>
